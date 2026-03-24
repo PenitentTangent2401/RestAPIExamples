@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HyperCore Cluster Dashboard</title>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  @import url('/static/vendor/fonts.css');
+
+  :root {
+    --bg-primary: #0a0e14;
+    --bg-secondary: #111820;
+    --bg-card: #151c27;
+    --bg-card-hover: #1a2332;
+    --bg-nested: #0d1219;
+    --border: #1e2a3a;
+    --border-active: #2d4a6f;
+    --text-primary: #d4dae3;
+    --text-secondary: #6b7a8d;
+    --text-muted: #3d4f63;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-purple: #8b5cf6;
+    --glow-blue: rgba(59, 130, 246, 0.15);
+    --glow-green: rgba(16, 185, 129, 0.15);
+    --glow-red: rgba(239, 68, 68, 0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-secondary);
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #fff;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+  .header h1 span { color: var(--text-secondary); font-weight: 400; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+    50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+  }
+  .status-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-secondary); }
+  .refresh-btn {
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 8px 16px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; cursor: pointer; transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: var(--glow-blue); }
+
+  .nav-tabs {
+    display: flex; padding: 0 32px; gap: 0;
+    border-bottom: 1px solid var(--border); background: var(--bg-secondary);
+  }
+  .nav-tab {
+    padding: 12px 24px; font-size: 13px; font-weight: 500; color: var(--text-secondary);
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; user-select: none;
+  }
+  .nav-tab:hover { color: var(--text-primary); }
+  .nav-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+  .main { padding: 24px 32px; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .cards-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 16px; margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; transition: all 0.2s;
+  }
+  .card:hover { border-color: var(--border-active); background: var(--bg-card-hover); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; }
+  .card-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 3px 8px;
+    border-radius: 4px; font-weight: 600;
+  }
+  .badge-online { background: var(--glow-green); color: var(--accent-green); }
+  .badge-warning { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+  .badge-danger { background: var(--glow-red); color: var(--accent-red); }
+
+  .metric-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-top: 1px solid var(--border);
+  }
+  .metric-label { font-size: 12px; color: var(--text-secondary); }
+  .metric-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
+
+  .progress-bar { width: 100%; height: 4px; background: var(--bg-primary); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+
+  /* ─── Nested sub-items (drives under nodes, VSDs under VMs) ─── */
+  .sub-section {
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+  }
+  .sub-section-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+  }
+  .sub-item {
+    background: var(--bg-nested); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 6px; font-size: 11px;
+  }
+  .sub-item-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+  }
+  .sub-item-name { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 11px; }
+  .sub-item-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .sub-item-label { color: var(--text-secondary); font-size: 10px; }
+  .sub-item-value { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; }
+  .health-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px;
+  }
+  .health-ok { background: var(--accent-green); }
+  .health-bad { background: var(--accent-red); }
+
+  /* ─── Chart Container ─── */
+  .chart-container {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 24px;
+  }
+  .chart-title {
+    font-size: 14px; font-weight: 600; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chart-title-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .chart-wrapper { position: relative; height: 250px; }
+
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+  /* ─── Migration Log ─── */
+  .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .log-table th {
+    text-align: left; padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-card);
+  }
+  .log-table td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-secondary);
+  }
+  .log-table tr:hover td { background: var(--bg-card-hover); color: var(--text-primary); }
+  .engine-tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .engine-reactive { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
+  .engine-predictive { background: rgba(139,92,246,0.15); color: var(--accent-purple); }
+  .dry-run-tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+  .arrow { color: var(--accent-cyan); margin: 0 4px; }
+  .log-scroll { max-height: 500px; overflow-y: auto; }
+
+  /* ─── Modules Panel ─── */
+  .modules-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .module-item {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 12px;
+  }
+  .module-item:hover { border-color: var(--accent-blue); background: var(--glow-blue); }
+  .module-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+  }
+  .module-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; }
+  .module-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .loading, .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 13px; }
+
+  /* ─── Group Controls ─── */
+  .group-controls {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .group-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--text-secondary); white-space: nowrap;
+  }
+  .group-btn {
+    background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 6px 14px; border-radius: 5px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .group-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+  .group-btn.active { background: rgba(6,182,212,0.12); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  .group-header {
+    grid-column: 1 / -1;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;
+    color: var(--accent-cyan); padding: 10px 0 4px 0;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .group-header-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent-cyan);
+  }
+  .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-primary); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+  @media (max-width: 768px) {
+    .header, .main, .nav-tabs { padding-left: 16px; padding-right: 16px; }
+    .cards-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ─── Settings Tab ─── */
+  .settings-group {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; margin-bottom: 16px;
+  }
+  .settings-group-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  }
+  .settings-group-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.05em; flex: 1;
+  }
+  .dirty-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--accent-amber); background: rgba(245,158,11,0.12);
+    border: 1px solid rgba(245,158,11,0.3); border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .apply-btn {
+    background: var(--bg-nested); border: 1px solid var(--border-active);
+    color: var(--accent-blue); font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; padding: 6px 16px; border-radius: 6px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .apply-btn:hover { background: var(--glow-blue); border-color: var(--accent-blue); }
+  .apply-btn.dirty { background: rgba(59,130,246,0.15); border-color: var(--accent-blue); color: #fff; }
+
+  .ctrl-rack {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+  }
+  .ctrl-strip {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center;
+    gap: 10px; padding: 14px 12px; min-width: 100px;
+    background: var(--bg-nested); border: 1px solid var(--border);
+    border-radius: 8px; transition: border-color 0.2s;
+  }
+  .ctrl-strip:hover { border-color: var(--border-active); }
+  .ctrl-strip-wide { min-width: 220px; flex: 1; }
+  .ctrl-strip-bool { min-width: 120px; }
+
+  .ctrl-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-primary); text-align: center; white-space: nowrap;
+  }
+  .ctrl-unit {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--text-secondary); margin-top: -4px;
+  }
+
+  /* Range slider */
+  .ctrl-range {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; min-width: 80px; height: 4px;
+    border-radius: 2px; outline: none; cursor: pointer;
+    background: var(--bg-card); /* updated by JS */
+  }
+  .ctrl-range::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--accent-blue);
+    cursor: pointer; box-shadow: 0 0 6px rgba(59,130,246,0.5);
+    transition: box-shadow 0.15s;
+  }
+  .ctrl-range::-webkit-slider-thumb:hover { box-shadow: 0 0 12px rgba(59,130,246,0.8); }
+  .ctrl-range::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent-blue); cursor: pointer; border: none;
+    box-shadow: 0 0 6px rgba(59,130,246,0.5);
+  }
+
+  /* Number input under slider */
+  .ctrl-value-input {
+    width: 72px; text-align: center;
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-primary); font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 600; padding: 5px 6px;
+    border-radius: 6px; outline: none; transition: border-color 0.2s;
+  }
+  .ctrl-value-input:focus { border-color: var(--accent-blue); }
+  .ctrl-value-input::-webkit-inner-spin-button,
+  .ctrl-value-input::-webkit-outer-spin-button { opacity: 0.4; }
+
+  /* Text input (for lists) */
+  .ctrl-text-input {
+    width: 100%; background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-primary); font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; padding: 6px 10px; border-radius: 6px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .ctrl-text-input:focus { border-color: var(--accent-blue); }
+
+  /* Toggle switch */
+  .toggle-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .toggle-switch { position: relative; width: 48px; height: 26px; cursor: pointer; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; inset: 0; border-radius: 13px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    transition: all 0.25s;
+  }
+  .toggle-thumb {
+    position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--text-muted); transition: all 0.25s;
+  }
+  .toggle-switch input:checked + .toggle-track { background: rgba(59,130,246,0.2); border-color: var(--accent-blue); }
+  .toggle-switch input:checked + .toggle-track .toggle-thumb { left: 25px; background: var(--accent-blue); box-shadow: 0 0 8px rgba(59,130,246,0.6); }
+  .toggle-state-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  }
+
+  /* Segmented control */
+  .seg-ctrl { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .seg-btn {
+    flex: 1; padding: 6px 10px; background: var(--bg-card); border: none;
+    border-right: 1px solid var(--border); color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .seg-btn:last-child { border-right: none; }
+  .seg-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+  .seg-btn.active { background: rgba(59,130,246,0.2); color: var(--accent-blue); }
+
+  /* Info icon + popup */
+  .ctrl-label-row {
+    display: flex; align-items: center; gap: 5px; justify-content: center;
+  }
+  .info-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 11px; line-height: 1;
+    padding: 0 1px; border-radius: 3px; transition: color 0.15s;
+    flex-shrink: 0; font-family: sans-serif;
+  }
+  .info-btn:hover { color: var(--accent-blue); }
+  .info-popup {
+    position: fixed; z-index: 10000;
+    background: var(--bg-secondary); border: 1px solid var(--border-active);
+    border-radius: 10px; padding: 16px 18px; width: 310px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    display: none; pointer-events: auto;
+  }
+  .info-popup.visible { display: block; }
+  .info-popup-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    font-weight: 700; letter-spacing: 0.08em; color: var(--accent-blue);
+    margin-bottom: 12px; text-transform: uppercase;
+  }
+  .info-section { margin-bottom: 10px; }
+  .info-section:last-child { margin-bottom: 0; }
+  .info-section-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .info-section-label.what     { color: var(--accent-cyan); }
+  .info-section-label.benefits { color: var(--accent-green); }
+  .info-section-label.careful  { color: var(--accent-amber); }
+  .info-section p { color: var(--text-primary); font-size: 12px; line-height: 1.6; }
+
+  /* Toast notification */
+  .settings-toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 20px; font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: var(--text-primary);
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .settings-toast.show { transform: translateY(0); opacity: 1; }
+  .settings-toast.ok { border-color: var(--accent-green); color: var(--accent-green); }
+  .settings-toast.err { border-color: var(--accent-red); color: var(--accent-red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">HC</div>
+    <h1>HyperCore <span>Dashboard</span></h1>
+  </div>
+  <div class="header-right">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Connecting...</span>
+    </div>
+    <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+  </div>
+</div>
+
+<div class="nav-tabs">
+  <div class="nav-tab active" data-tab="nodes" onclick="switchTab('nodes')">Nodes & Drives</div>
+  <div class="nav-tab" data-tab="vms" onclick="switchTab('vms')">VMs & Storage</div>
+  <div class="nav-tab" data-tab="migrations" onclick="switchTab('migrations')">Migration Log</div>
+  <div class="nav-tab" data-tab="modules" onclick="switchTab('modules')">Modules</div>
+  <div class="nav-tab" data-tab="settings" onclick="switchTab('settings')">⚙ Settings</div>
+</div>
+
+<div class="main">
+  <!-- ─── NODES TAB ─── -->
+  <div class="tab-content active" id="tab-nodes">
+    <div class="chart-container">
+      <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-blue)"></div>Node CPU Usage Over Time</div>
+      <div class="chart-wrapper"><canvas id="nodeCpuChart"></canvas></div>
+    </div>
+    <div class="cards-grid" id="nodeCards">
+      <div class="loading"><div class="spinner"></div>Loading node metrics...</div>
+    </div>
+  </div>
+
+  <!-- ─── VMS TAB ─── -->
+  <div class="tab-content" id="tab-vms">
+    <div class="charts-row">
+      <div class="chart-container">
+        <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-cyan)"></div>VM CPU Usage (top 10)</div>
+        <div class="chart-wrapper"><canvas id="vmCpuChart"></canvas></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-amber)"></div>VSD Latency (top 10 by write latency)</div>
+        <div class="chart-wrapper"><canvas id="vsdLatencyChart"></canvas></div>
+      </div>
+    </div>
+    <div class="group-controls">
+      <span class="group-label">Group by:</span>
+      <button class="group-btn active" data-group="none" onclick="setVmGroup('none')">None</button>
+      <button class="group-btn" data-group="tag" onclick="setVmGroup('tag')">Tag</button>
+      <button class="group-btn" data-group="node" onclick="setVmGroup('node')">Node</button>
+      <button class="group-btn" data-group="vlan" onclick="setVmGroup('vlan')">VLAN</button>
+    </div>
+    <div class="cards-grid" id="vmCards">
+      <div class="loading"><div class="spinner"></div>Loading VM metrics...</div>
+    </div>
+  </div>
+
+  <!-- ─── MIGRATIONS TAB ─── -->
+  <div class="tab-content" id="tab-migrations">
+    <div class="chart-container">
+      <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-purple)"></div>Migration Event Log</div>
+      <div class="log-scroll" id="migrationLog">
+        <div class="loading"><div class="spinner"></div>Loading migration events...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SETTINGS TAB ─── -->
+  <div class="tab-content" id="tab-settings">
+    <div id="settingsContent">
+      <div class="loading"><div class="spinner"></div>Loading settings...</div>
+    </div>
+  </div>
+  <div class="settings-toast" id="settingsToast"></div>
+
+  <!-- ─── Info Popup ─── -->
+  <div id="infoPopup" class="info-popup">
+    <div class="info-popup-title" id="infoPopupTitle"></div>
+    <div class="info-section">
+      <div class="info-section-label what">What it does</div>
+      <p id="infoPopupWhat"></p>
+    </div>
+    <div class="info-section">
+      <div class="info-section-label benefits">Benefits</div>
+      <p id="infoPopupBenefits"></p>
+    </div>
+    <div class="info-section">
+      <div class="info-section-label careful">Be careful</div>
+      <p id="infoPopupCareful"></p>
+    </div>
+  </div>
+
+  <!-- ─── MODULES TAB ─── -->
+  <div class="tab-content" id="tab-modules">
+    <div class="chart-container" style="margin-bottom:16px;">
+      <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-amber)"></div>Tools</div>
+      <div style="display:flex;align-items:center;gap:16px;padding:12px 16px;background:var(--bg-nested);border:1px solid var(--border);border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:8px;background:rgba(245,158,11,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📊</div>
+        <div style="flex:1;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;">Grafana</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Advanced data exploration and custom dashboards</div>
+          <div id="grafanaStatus" style="font-family:'JetBrains Mono',monospace;font-size:10px;margin-top:4px;color:var(--text-muted);">Checking...</div>
+        </div>
+        <a id="grafanaLink" href="http://localhost:3000" target="_blank" style="background:var(--bg-primary);border:1px solid var(--border);color:var(--text-secondary);padding:8px 16px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;text-decoration:none;transition:all 0.2s;white-space:nowrap;" onmouseover="this.style.borderColor='var(--accent-amber)';this.style.color='var(--accent-amber)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">Open Grafana</a>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:8px;font-family:'JetBrains Mono',monospace;">
+        Grafana is not started by default. To launch it, run:
+        <code style="background:var(--bg-primary);padding:2px 6px;border-radius:3px;margin-left:4px;">docker compose --profile tools up -d grafana</code>
+      </div>
+    </div>
+    <div class="chart-container">
+      <div class="chart-title"><div class="chart-title-dot" style="background:var(--accent-green)"></div>Discovered Data Modules</div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+        Every container that writes to InfluxDB appears here automatically.
+      </p>
+      <div class="modules-list" id="modulesList">
+        <div class="loading"><div class="spinner"></div>Discovering modules...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+
+Chart.defaults.color = '#6b7a8d';
+Chart.defaults.borderColor = '#1e2a3a';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 10;
+
+const CHART_COLORS = [
+  '#3b82f6','#06b6d4','#10b981','#f59e0b','#ef4444',
+  '#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1'
+];
+
+let nodeCpuChart = null, vmCpuChart = null, vsdLatencyChart = null;
+
+// ─── Cached data stores ───
+let cachedDrives = [];
+let cachedVsds = [];
+
+const MODULE_META = {
+  'node_metrics':     { icon:'⬡', color:'var(--accent-blue)',   desc:'Physical node CPU & RAM' },
+  'vm_metrics':       { icon:'◫', color:'var(--accent-cyan)',   desc:'Virtual machine performance' },
+  'drive_metrics':    { icon:'◉', color:'var(--accent-green)',  desc:'Physical drive health & usage' },
+  'vsd_metrics':      { icon:'◈', color:'var(--accent-amber)',  desc:'Virtual storage device I/O' },
+  'migration_events': { icon:'⇄', color:'var(--accent-purple)', desc:'Balancer migration log' },
+};
+function getModuleMeta(n) { return MODULE_META[n] || { icon:'◻', color:'var(--text-secondary)', desc:'Auto-discovered data source' }; }
+
+function switchTab(t) {
+  document.querySelectorAll('.nav-tab').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+  document.querySelector(`[data-tab="${t}"]`).classList.add('active');
+  document.getElementById(`tab-${t}`).classList.add('active');
+  if (t === 'settings') loadSettings();
+}
+
+function formatTime(s) { return new Date(s).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+function formatDateTime(s) { return new Date(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function formatBytes(b) {
+  if(!b) return '0 B';
+  const u=['B','KB','MB','GB','TB']; let i=0, v=b;
+  while(v>=1024&&i<u.length-1){v/=1024;i++;} return `${v.toFixed(1)} ${u[i]}`;
+}
+function formatKbps(k) {
+  if (!k) return '0 KB/s';
+  if (k >= 1024) return `${(k/1024).toFixed(1)} MB/s`;
+  return `${k} KB/s`;
+}
+function cpuBadgeClass(c) { return c>=80?'badge-danger':c>=50?'badge-warning':'badge-online'; }
+function progressColor(p) { return p>=80?'var(--accent-red)':p>=50?'var(--accent-amber)':'var(--accent-green)'; }
+function tempColor(t) { return t>=60?'var(--accent-red)':t>=45?'var(--accent-amber)':'var(--accent-green)'; }
+
+async function apiFetch(ep) {
+  try { const r=await fetch(`${API_BASE}${ep}`); if(!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json(); }
+  catch(e) { console.error(`API error (${ep}):`,e); return null; }
+}
+
+// ─── Render drive sub-items for a given node ───
+function renderDrivesForNode(nodeUuid) {
+  const drives = cachedDrives.filter(d => d.node_uuid === nodeUuid);
+  if (!drives.length) return '';
+  
+  return `
+    <div class="sub-section">
+      <div class="sub-section-title">◉ Physical Drives (${drives.length})</div>
+      ${drives.map(d => {
+        const latest = d.history.length ? d.history[d.history.length - 1] : {};
+        const healthy = latest.is_healthy;
+        const temp = latest.temperature;
+        const usedBytes = latest.used_bytes || 0;
+        const errors = latest.error_count || 0;
+        
+        return `
+          <div class="sub-item">
+            <div class="sub-item-header">
+              <span class="sub-item-name">Slot ${d.slot}</span>
+              <span><span class="health-dot ${healthy ? 'health-ok' : 'health-bad'}"></span>${healthy ? 'Healthy' : 'Degraded'}</span>
+            </div>
+            <div class="sub-item-row">
+              <span class="sub-item-label">Used</span>
+              <span class="sub-item-value">${formatBytes(usedBytes)}</span>
+            </div>
+            ${temp !== undefined ? `<div class="sub-item-row">
+              <span class="sub-item-label">Temperature</span>
+              <span class="sub-item-value" style="color:${tempColor(temp)}">${temp}°C</span>
+            </div>` : ''}
+            ${errors > 0 ? `<div class="sub-item-row">
+              <span class="sub-item-label">Errors</span>
+              <span class="sub-item-value" style="color:var(--accent-red)">${errors}</span>
+            </div>` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ─── Render VSD sub-items for a given VM ───
+function renderVsdsForVm(vmUuid) {
+  const vsds = cachedVsds.filter(v => v.vm_uuid === vmUuid);
+  if (!vsds.length) return '';
+  
+  return `
+    <div class="sub-section">
+      <div class="sub-section-title">◈ Virtual Storage Devices (${vsds.length})</div>
+      ${vsds.map(v => {
+        const latest = v.history.length ? v.history[v.history.length - 1] : {};
+        const readKbps = latest.read_kbps || 0;
+        const writeKbps = latest.write_kbps || 0;
+        const readLat = latest.read_latency_us || 0;
+        const writeLat = latest.write_latency_us || 0;
+        
+        return `
+          <div class="sub-item">
+            <div class="sub-item-header">
+              <span class="sub-item-name">${v.name}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(6,182,212,0.12);color:var(--accent-cyan);">${v.type}</span>
+            </div>
+            <div class="sub-item-row">
+              <span class="sub-item-label">Read</span>
+              <span class="sub-item-value">${formatKbps(readKbps)}</span>
+            </div>
+            <div class="sub-item-row">
+              <span class="sub-item-label">Write</span>
+              <span class="sub-item-value">${formatKbps(writeKbps)}</span>
+            </div>
+            <div class="sub-item-row">
+              <span class="sub-item-label">Read Latency</span>
+              <span class="sub-item-value">${readLat.toLocaleString()} μs</span>
+            </div>
+            <div class="sub-item-row">
+              <span class="sub-item-label">Write Latency</span>
+              <span class="sub-item-value">${writeLat.toLocaleString()} μs</span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ─── Load Nodes + Drives ───
+async function loadNodes() {
+  const [nodeData, driveData] = await Promise.all([
+    apiFetch('/api/nodes?hours=1'),
+    apiFetch('/api/drives?hours=1')
+  ]);
+  
+  if (!nodeData) { document.getElementById('nodeCards').innerHTML = '<div class="empty-state">Could not connect to API</div>'; setStatus(false); return; }
+  setStatus(true);
+  cachedDrives = driveData || [];
+
+  const container = document.getElementById('nodeCards');
+  if (!nodeData.length) { container.innerHTML = '<div class="empty-state">No node data yet. Is the collector running?</div>'; return; }
+
+  container.innerHTML = nodeData.map(node => {
+    const latest = node.history[node.history.length - 1] || {};
+    const cpu = latest.cpu_usage || 0;
+    const memBytes = latest.mem_usage_bytes || 0;
+    
+    return `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Node ${node.peer_id}</span>
+          <span class="card-badge ${cpuBadgeClass(cpu)}">${cpu.toFixed(1)}% CPU</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">CPU Usage</span>
+          <span class="metric-value" style="color:${progressColor(cpu)}">${cpu.toFixed(1)}%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${Math.min(cpu,100)}%;background:${progressColor(cpu)}"></div>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Memory Used</span>
+          <span class="metric-value">${formatBytes(memBytes)}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Data Points (1h)</span>
+          <span class="metric-value">${node.history.length}</span>
+        </div>
+        ${renderDrivesForNode(node.uuid)}
+      </div>
+    `;
+  }).join('');
+
+  // Node CPU chart
+  const ctx = document.getElementById('nodeCpuChart').getContext('2d');
+  if (nodeCpuChart) nodeCpuChart.destroy();
+  nodeCpuChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: nodeData.map((n,i) => ({
+      label: `Node ${n.peer_id}`,
+      data: n.history.map(h => ({ x: new Date(h.time), y: h.cpu_usage })),
+      borderColor: CHART_COLORS[i%CHART_COLORS.length],
+      backgroundColor: CHART_COLORS[i%CHART_COLORS.length]+'20',
+      borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true
+    }))},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle' } } },
+      scales: {
+        x: { type: 'time', time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm' } }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { callback: v => v+'%' }, grid: { color: '#1e2a3a40' } }
+      }
+    }
+  });
+}
+
+// ─── VM Grouping State ───
+let currentVmGroup = 'none';
+let cachedVmData = [];
+
+function setVmGroup(mode) {
+  currentVmGroup = mode;
+  document.querySelectorAll('.group-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.group-btn[data-group="${mode}"]`).classList.add('active');
+  renderVmCards();
+}
+
+function renderVmCard(vm) {
+  const latest = vm.history[vm.history.length-1] || {};
+  const cpu = latest.cpu_usage || 0;
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${vm.name}</span>
+        <span class="card-badge ${cpuBadgeClass(cpu)}">${cpu.toFixed(1)}%</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">CPU Usage</span>
+        <span class="metric-value" style="color:${progressColor(cpu)}">${cpu.toFixed(1)}%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${Math.min(cpu,100)}%;background:${progressColor(cpu)}"></div>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Network RX</span>
+        <span class="metric-value">${formatBytes(latest.rx_bit_rate||0)}/s</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Network TX</span>
+        <span class="metric-value">${formatBytes(latest.tx_bit_rate||0)}/s</span>
+      </div>
+      ${renderVsdsForVm(vm.uuid)}
+    </div>
+  `;
+}
+
+function renderVmCards() {
+  const container = document.getElementById('vmCards');
+  if (!cachedVmData.length) { container.innerHTML = '<div class="empty-state">No VM data yet.</div>'; return; }
+
+  if (currentVmGroup === 'none') {
+    // No grouping — just sort by name
+    const sorted = [...cachedVmData].sort((a,b) => a.name.localeCompare(b.name));
+    container.innerHTML = sorted.map(renderVmCard).join('');
+    return;
+  }
+
+  // Build groups
+  const groups = {};
+  for (const vm of cachedVmData) {
+    let key;
+    if (currentVmGroup === 'tag') {
+      key = vm.tag || '(no tag)';
+    } else if (currentVmGroup === 'node') {
+      key = vm.node_peer_id || 'unknown';
+    } else if (currentVmGroup === 'vlan') {
+      key = vm.vlan || '0';
+    }
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(vm);
+  }
+
+  // Sort group keys
+  let sortedKeys;
+  if (currentVmGroup === 'node') {
+    // Sort by peer ID numerically, push 'unknown' to the end
+    sortedKeys = Object.keys(groups).sort((a,b) => {
+      const aIsUnknown = isNaN(parseInt(a));
+      const bIsUnknown = isNaN(parseInt(b));
+      if (aIsUnknown && !bIsUnknown) return 1;
+      if (!aIsUnknown && bIsUnknown) return -1;
+      if (aIsUnknown && bIsUnknown) return a.localeCompare(b);
+      return parseInt(a) - parseInt(b);
+    });
+  } else if (currentVmGroup === 'vlan') {
+    // Sort VLAN numerically
+    sortedKeys = Object.keys(groups).sort((a,b) => {
+      const na = parseInt(a) || 0, nb = parseInt(b) || 0;
+      return na - nb;
+    });
+  } else {
+    // Sort tags alphabetically, with "(no tag)" last
+    sortedKeys = Object.keys(groups).sort((a,b) => {
+      if (a === '(no tag)') return 1;
+      if (b === '(no tag)') return -1;
+      return a.localeCompare(b);
+    });
+  }
+
+  // Render with group headers
+  const groupLabels = { tag: 'Tag', node: 'Node', vlan: 'VLAN' };
+  let html = '';
+  for (const key of sortedKeys) {
+    const label = `${groupLabels[currentVmGroup]}: ${currentVmGroup === 'node' ? 'Peer ' + key : key}`;
+    html += `<div class="group-header"><div class="group-header-dot"></div>${label} (${groups[key].length})</div>`;
+    const sorted = groups[key].sort((a,b) => a.name.localeCompare(b.name));
+    html += sorted.map(renderVmCard).join('');
+  }
+  container.innerHTML = html;
+}
+
+// ─── Load VMs + VSDs ───
+async function loadVMs() {
+  const [vmData, vsdData] = await Promise.all([
+    apiFetch('/api/vms?hours=1'),
+    apiFetch('/api/vsds?hours=1')
+  ]);
+  
+  if (!vmData) { document.getElementById('vmCards').innerHTML = '<div class="empty-state">Could not connect to API</div>'; return; }
+  cachedVsds = vsdData || [];
+  cachedVmData = vmData;
+
+  renderVmCards();
+
+  // VM CPU chart — top 10 by latest CPU
+  const cpuSorted = [...vmData].sort((a,b) => {
+    const ac = a.history.length ? a.history[a.history.length-1].cpu_usage||0 : 0;
+    const bc = b.history.length ? b.history[b.history.length-1].cpu_usage||0 : 0;
+    return bc - ac;
+  });
+  const top10 = cpuSorted.slice(0,10);
+  const ctx1 = document.getElementById('vmCpuChart').getContext('2d');
+  if (vmCpuChart) vmCpuChart.destroy();
+  vmCpuChart = new Chart(ctx1, {
+    type: 'line',
+    data: { datasets: top10.map((vm,i) => ({
+      label: vm.name,
+      data: vm.history.map(h => ({ x: new Date(h.time), y: h.cpu_usage })),
+      borderColor: CHART_COLORS[i%CHART_COLORS.length],
+      borderWidth: 1.5, pointRadius: 0, tension: 0.3
+    }))},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle' } } },
+      scales: {
+        x: { type: 'time', time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm' } }, grid: { display: false } },
+        y: { min: 0, ticks: { callback: v => v+'%' }, grid: { color: '#1e2a3a40' } }
+      }
+    }
+  });
+
+  // VSD Latency chart — top 10 by latest write latency
+  if (cachedVsds.length) {
+    const vsdSorted = [...cachedVsds]
+      .filter(v => v.history.length > 0)
+      .sort((a,b) => {
+        const al = a.history[a.history.length-1].write_latency_us||0;
+        const bl = b.history[b.history.length-1].write_latency_us||0;
+        return bl - al;
+      }).slice(0,10);
+
+    const ctx2 = document.getElementById('vsdLatencyChart').getContext('2d');
+    if (vsdLatencyChart) vsdLatencyChart.destroy();
+    vsdLatencyChart = new Chart(ctx2, {
+      type: 'line',
+      data: { datasets: vsdSorted.map((v,i) => ({
+        label: `${v.vm_name}/${v.name}`,
+        data: v.history.map(h => ({ x: new Date(h.time), y: h.write_latency_us })),
+        borderColor: CHART_COLORS[i%CHART_COLORS.length],
+        borderWidth: 1.5, pointRadius: 0, tension: 0.3
+      }))},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle' } } },
+        scales: {
+          x: { type: 'time', time: { tooltipFormat: 'HH:mm', displayFormats: { minute: 'HH:mm' } }, grid: { display: false } },
+          y: { min: 0, ticks: { callback: v => v+' μs' }, grid: { color: '#1e2a3a40' } }
+        }
+      }
+    });
+  }
+}
+
+// ─── Migration Log ───
+async function loadMigrations() {
+  const data = await apiFetch('/api/migrations?days=7');
+  const container = document.getElementById('migrationLog');
+  if (!data||!data.length) { container.innerHTML='<div class="empty-state">No migration events recorded yet.</div>'; return; }
+  data.sort((a, b) => new Date(b.time) - new Date(a.time));
+  container.innerHTML = `
+    <table class="log-table"><thead><tr>
+      <th>Time</th><th>VM</th><th>Migration</th><th>Engine</th><th>Mode</th><th>Reason</th>
+    </tr></thead><tbody>
+    ${data.map(e=>`<tr>
+      <td>${formatDateTime(e.time)}</td>
+      <td style="color:var(--text-primary)">${e.vm_name}${e.dry_run==='true'?' <span class="dry-run-tag">DRY</span>':''}</td>
+      <td>${e.source_ip} <span class="arrow">→</span> ${e.target_ip}</td>
+      <td><span class="engine-tag engine-${e.engine}">${e.engine}</span></td>
+      <td>${e.mode}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.reason}">${e.reason}</td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+
+// ─── Modules Discovery ───
+async function loadModules() {
+  const data = await apiFetch('/api/modules');
+  const container = document.getElementById('modulesList');
+  if (!data||!data.measurements||!data.measurements.length) { container.innerHTML='<div class="empty-state">No measurements found.</div>'; return; }
+  container.innerHTML = data.measurements.map(name => {
+    const m = getModuleMeta(name);
+    return `<div class="module-item" onclick="alert('Module: ${name}\\nQuery: GET /api/query/${name}?hours=1&limit=100')">
+      <div class="module-icon" style="background:${m.color}20;color:${m.color}">${m.icon}</div>
+      <div><div class="module-name">${name}</div><div class="module-desc">${m.desc}</div></div>
+    </div>`;
+  }).join('');
+}
+
+function setStatus(c) {
+  const d=document.getElementById('statusDot'),t=document.getElementById('statusText');
+  if(c){d.style.background='var(--accent-green)';t.textContent='Connected';}
+  else{d.style.background='var(--accent-red)';t.textContent='Disconnected';}
+}
+
+// ─── Grafana Status Check ───
+async function checkGrafana() {
+  const status = document.getElementById('grafanaStatus');
+  const link = document.getElementById('grafanaLink');
+  try {
+    const resp = await fetch('http://localhost:3000/api/health', { mode: 'no-cors', signal: AbortSignal.timeout(2000) });
+    status.innerHTML = '<span style="color:var(--accent-green);">● Running</span>';
+    link.style.borderColor = 'var(--accent-green)';
+    link.style.color = 'var(--accent-green)';
+  } catch {
+    status.innerHTML = '<span style="color:var(--text-muted);">○ Not running</span>';
+    link.style.borderColor = 'var(--border)';
+    link.style.color = 'var(--text-muted)';
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([loadNodes(), loadVMs(), loadMigrations(), loadModules(), checkGrafana()]);
+}
+
+refreshAll();
+setInterval(refreshAll, 30000);
+
+// ═══════════════════════════════════════════════════════════════════
+// SETTINGS TAB — live-tunable controls
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Per-key info content for the ⓘ popup ───────────────────────
+const CTRL_INFO = {
+  DRY_RUN: {
+    what: 'The balancer analyses the cluster and decides which VMs to migrate, but stops short of actually executing any moves. All decision logic runs normally — you see the outcomes in the logs.',
+    benefits: 'Essential safety net when first deploying or after changing thresholds significantly. Lets you validate behaviour before committing to live migrations.',
+    careful: 'While enabled, real resource imbalances are NOT corrected. A cluster under heavy load will stay imbalanced for as long as Dry Run is on.'
+  },
+  VERBOSITY: {
+    what: 'Controls how much detail appears in the balancer container logs. 0 = errors only · 1 = decisions · 2 = scoring detail · 3 = full debug trace.',
+    benefits: 'Higher levels are invaluable for diagnosing why a migration did or did not trigger. Lower levels keep logs clean in production.',
+    careful: 'Level 3 on a busy cluster with many VMs and nodes produces very large log volumes. Use it temporarily for debugging, then dial back.'
+  },
+  CPU_UPPER_THRESHOLD_PERCENT: {
+    what: 'CPU utilisation percentage above which a node is considered overloaded and becomes a migration source candidate.',
+    benefits: 'Lowering the threshold makes balancing more proactive, keeping nodes cooler. Raising it tolerates higher utilisation before acting.',
+    careful: 'Set too low (e.g. 30%) and the balancer churns VMs constantly based on normal usage spikes. Always pair with AVG_WINDOW to smooth out short bursts before deciding.'
+  },
+  RAM_UPPER_THRESHOLD_PERCENT: {
+    what: 'RAM utilisation percentage above which a node is flagged as memory-pressured and may have VMs migrated away from it.',
+    benefits: 'Prevents nodes from reaching dangerously high RAM usage by triggering migrations early.',
+    careful: 'Must always be set below RAM_HARD_LIMIT. Setting it too close to the hard limit leaves little reaction window before a node becomes critical.'
+  },
+  RAM_LIMIT_PERCENT: {
+    what: 'Hard RAM ceiling — nodes at or above this percentage cannot receive incoming VM migrations regardless of any other condition.',
+    benefits: 'Absolute guard against out-of-memory events. Even if the balancer wants to place a VM somewhere, this limit is never violated.',
+    careful: 'Must be higher than RAM_UPPER_THRESHOLD. If set equal to or below the threshold, every node is simultaneously a migration source and unable to accept — migrations become impossible.'
+  },
+  MAX_VCPU_RATIO: {
+    what: 'Maximum ratio of vCPUs allocated to VMs vs physical CPU cores on a node (e.g. 2.0× means 2 vCPUs per physical core).',
+    benefits: 'Higher values allow more VMs per node through CPU overcommit, improving density. Lower values reserve physical capacity for latency-sensitive workloads.',
+    careful: 'Excessive overcommit (above 4–6×) noticeably degrades VM CPU performance under real load. The right value depends on your workload mix — idle VMs tolerate high ratios; compute-heavy ones do not.'
+  },
+  SAMPLE_INTERVAL_SECONDS: {
+    what: 'How often (in seconds) the balancer reads current node CPU and RAM usage to update its rolling averages.',
+    benefits: 'Shorter intervals give finer-grained averages. Longer intervals reduce API polling frequency on the HyperCore cluster.',
+    careful: 'Very short intervals produce noisy readings from brief spikes. Always pair with an appropriate AVG_WINDOW_MINUTES to smooth the data before making a decision.'
+  },
+  AVG_WINDOW_MINUTES: {
+    what: 'Length of the rolling window (in minutes) used to average CPU and RAM samples before any balancing decision is made.',
+    benefits: 'A longer window ignores transient spikes and bases decisions on sustained load. A shorter window reacts faster to genuine load changes.',
+    careful: 'The window must contain at least 2 samples. Minimum meaningful value: (2 × SAMPLE_INTERVAL_SECONDS) / 60 minutes. If the window is shorter than one sample interval, decisions are based on a single reading.'
+  },
+  VM_MOVE_COOLDOWN_MINUTES: {
+    what: 'After a VM is migrated, it cannot be selected for migration again for this many minutes.',
+    benefits: 'Prevents a single VM from being shuffled repeatedly in quick succession, giving the cluster time to stabilise after each move.',
+    careful: 'Set too high and a VM that genuinely needs to move again must wait a long time. Setting to 0 removes all per-VM protection against migration storms.'
+  },
+  MIGRATION_COOLDOWN_MINUTES: {
+    what: 'Global lock — after any VM migration completes, no further migrations are initiated for this many minutes cluster-wide.',
+    benefits: 'Prevents cascading migrations. One move changes the load landscape; this window lets the cluster settle before the next decision.',
+    careful: 'Too high stalls balancing entirely on a heavily loaded cluster. Too low (or 0) can trigger rapid sequential migrations that destabilise rather than help.'
+  },
+  EXCLUDE_NODE_IPS: {
+    what: 'Comma-separated list of node IP addresses that the balancer will completely ignore — it will never migrate VMs to or from these nodes.',
+    benefits: 'Protects nodes undergoing maintenance, dedicated workload hosts, or nodes under investigation from being touched by the balancer.',
+    careful: 'Excluding nodes reduces the balancer\'s available headroom. Excluded nodes still accumulate load and can become overloaded without the balancer intervening.'
+  },
+  PREDICTIVE_BALANCING_ENABLED: {
+    what: 'Enables "The Oracle" — a Prophet-based forecasting engine that analyses historical trends and proactively migrates VMs before predicted resource exhaustion.',
+    benefits: 'Prevents overload before it happens rather than reacting after the fact. Especially valuable for workloads with predictable daily or weekly patterns.',
+    careful: 'Requires at least MIN_HISTORY_HOURS of historical data per VM in InfluxDB. Running with insufficient history causes VMs to be silently skipped. Each run is CPU-intensive — ensure the container has adequate resources.'
+  },
+  PREDICTIVE_THRESHOLD: {
+    what: 'Predicted future resource usage percentage that, if forecast to be exceeded within the LEAD_TIME window, triggers a proactive migration.',
+    benefits: 'Lower values are more aggressive, acting on smaller predicted exceedances. Higher values reserve action for near-certain overloads only.',
+    careful: 'Set too low and normal daily usage peaks trigger unnecessary migrations. Set too high and genuine overload events may not be caught in time.'
+  },
+  PREDICTIVE_LEAD_TIME_HOURS: {
+    what: 'How far ahead (in hours) The Oracle looks when deciding whether a VM needs to be moved before a predicted resource spike.',
+    benefits: 'Larger lead times give more flexibility for scheduling migrations during quiet periods, particularly useful for workloads with sharp, well-predicted peaks.',
+    careful: 'Prophet\'s confidence intervals widen significantly beyond 24–48h, making very long lead times less reliable. Long lead times may also trigger migrations too far in advance of actual risk.'
+  },
+  PREDICTIVE_MIN_HISTORY_HOURS: {
+    what: 'Minimum hours of historical data a VM must have in InfluxDB before The Oracle will attempt to forecast it.',
+    benefits: 'Prevents garbage forecasts from newly provisioned VMs with insufficient history to reveal usage patterns.',
+    careful: 'Set too high and recently created VMs are never protected. The default 336h (14 days) captures at least two full weekly cycles — the recommended minimum for Prophet to detect patterns reliably.'
+  },
+  PREDICTIVE_LOOKBACK_DAYS: {
+    what: 'How many days of historical metric data are fed to Prophet when training each forecast. Longer lookbacks capture longer-term seasonal patterns.',
+    benefits: 'More data allows Prophet to detect weekly and monthly patterns more reliably, improving forecast accuracy.',
+    careful: 'More data means longer training time per VM. With many VMs and limited MAX_WORKERS, very long lookbacks can make forecast runs take hours. Also, InfluxDB\'s long-term bucket retention must cover this entire window.'
+  },
+  PREDICTIVE_MAX_WORKERS: {
+    what: 'Number of parallel Python processes used to train Prophet forecasts simultaneously across multiple VMs.',
+    benefits: 'Higher worker counts reduce total forecast run time proportionally, which matters on large clusters with many VMs.',
+    careful: 'Should not exceed the container\'s CPU limit (default 2.0 cores). More workers than cores causes them to compete and actually slows total throughput. Match this value to the balancer\'s CPU limit in docker-compose.'
+  },
+  PREDICTIVE_INTERVAL_SECONDS: {
+    what: 'How frequently The Oracle runs a full forecast cycle across all VMs, in seconds. Default 43200 = every 12 hours.',
+    benefits: 'More frequent runs keep predictions fresh and catch emerging trends sooner. Useful if your workload changes rapidly throughout the day.',
+    careful: 'Each full run is CPU-intensive, especially with many VMs. Intervals shorter than 3600s on large clusters risk back-to-back runs without recovery time. Monitor container CPU usage when reducing this value.'
+  },
+  PREDICTIVE_RESERVATION_MINUTES: {
+    what: 'When the Oracle decides a node is heading for overload and queues migrations away from it, that node is immediately locked as a migration target until this many minutes after the predicted peak.',
+    benefits: 'Prevents the reactive engine from routing other VMs back onto a node the Oracle just flagged, which would undo the proactive work. Also stops the reactive engine from making the problem worse while the predictive migrations are executing one by one.',
+    careful: 'Set too high and a node that recovers quickly stays blocked from receiving VMs for longer than necessary, reducing balancing headroom cluster-wide. Set to 0 to disable reservations entirely — not recommended when predictive balancing is active.'
+  },
+  POLL_INTERVAL: {
+    what: 'How often (in seconds) the Collector fetches node and VM metrics from the HyperCore API and writes them to InfluxDB.',
+    benefits: 'Shorter intervals produce more granular historical data for both the dashboard graphs and The Oracle\'s training dataset.',
+    careful: 'Too short increases API load on the HyperCore cluster and InfluxDB write pressure. Below 15s risks rate-limiting or degraded cluster API performance. 30s is the recommended minimum.'
+  },
+  SLOW_POLL_INTERVAL: {
+    what: 'Extended collection interval used for less time-sensitive data such as static node properties and disk metadata.',
+    benefits: 'Reduces unnecessary API calls for information that changes rarely, keeping overall HyperCore API load low.',
+    careful: 'Too long can allow stale metadata to persist in InfluxDB. For most deployments 300s (5 min) is a sensible balance.'
+  },
+  INFLUX_WRITE_RETRIES: {
+    what: 'How many times the Collector retries a failed InfluxDB write before giving up and logging an error.',
+    benefits: 'Handles brief InfluxDB restarts, container restarts, or transient network blips without dropping metric data.',
+    careful: 'Very high values can stall the collection loop if InfluxDB is genuinely unreachable. Total blocking time = WRITE_RETRIES × RETRY_DELAY — keep the product well below POLL_INTERVAL to avoid skipping a collection cycle.'
+  },
+  INFLUX_RETRY_DELAY: {
+    what: 'Seconds to wait between successive InfluxDB write retry attempts after a failed write.',
+    benefits: 'Gives InfluxDB time to recover between retries rather than hammering it with immediate successive requests.',
+    careful: 'Total blocking time = WRITE_RETRIES × RETRY_DELAY. For example, 3 retries × 10s = 30s blocked — ensure this product is below POLL_INTERVAL to avoid collection gaps.'
+  },
+  STALE_SECONDS: {
+    what: 'How many seconds can elapse since the last successful Collector write before the dashboard marks a node\'s data as stale and shows a warning indicator.',
+    benefits: 'Quickly surfaces collection failures, network issues, or InfluxDB problems before they silently affect dashboard accuracy.',
+    careful: 'Set too low (below POLL_INTERVAL) and nodes will always appear stale. Should be at least 2–3× POLL_INTERVAL to account for normal write timing variance.'
+  },
+};
+
+const CTRL_GROUPS = [
+  {
+    id: 'master', label: 'Master Controls', color: 'var(--accent-red)',
+    controls: [
+      { key: 'DRY_RUN',   label: 'DRY RUN',   type: 'bool', hint: 'Simulate only — no actual migrations' },
+      { key: 'VERBOSITY', label: 'VERBOSITY',  type: 'seg',  options: [0,1,2,3], hint: 'Log detail level' },
+    ]
+  },
+  {
+    id: 'reactive', label: 'Reactive Balancer', color: 'var(--accent-blue)',
+    controls: [
+      { key: 'CPU_UPPER_THRESHOLD_PERCENT',  label: 'CPU THRESHOLD',  type: 'range', min:10,  max:100, step:0.5, unit:'%'   },
+      { key: 'RAM_UPPER_THRESHOLD_PERCENT',  label: 'RAM THRESHOLD',  type: 'range', min:10,  max:100, step:0.5, unit:'%'   },
+      { key: 'RAM_LIMIT_PERCENT',            label: 'RAM HARD LIMIT', type: 'range', min:50,  max:100, step:0.5, unit:'%'   },
+      { key: 'MAX_VCPU_RATIO',               label: 'vCPU RATIO',     type: 'range', min:0.5, max:8.0, step:0.1, unit:'×'   },
+      { key: 'SAMPLE_INTERVAL_SECONDS',      label: 'SAMPLE INTERVAL',type: 'range', min:10,  max:300, step:5,   unit:'s'   },
+      { key: 'AVG_WINDOW_MINUTES',           label: 'AVG WINDOW',     type: 'range', min:1,   max:30,  step:1,   unit:'min' },
+      { key: 'VM_MOVE_COOLDOWN_MINUTES',     label: 'VM COOLDOWN',    type: 'range', min:0,   max:120, step:1,   unit:'min' },
+      { key: 'MIGRATION_COOLDOWN_MINUTES',   label: 'GLOBAL COOLDOWN',type: 'range', min:0,   max:60,  step:1,   unit:'min' },
+      { key: 'EXCLUDE_NODE_IPS',             label: 'EXCLUDE NODE IPs', type: 'text', hint: 'Comma-separated IPs', wide: true },
+    ]
+  },
+  {
+    id: 'predictive', label: 'Predictive Engine  ·  The Oracle', color: 'var(--accent-purple)',
+    controls: [
+      { key: 'PREDICTIVE_BALANCING_ENABLED', label: 'ENABLED',        type: 'bool', hint: 'Enable Oracle forecasting' },
+      { key: 'PREDICTIVE_THRESHOLD',         label: 'DANGER THRESHOLD',type: 'range', min:50,   max:100,  step:0.5, unit:'%'     },
+      { key: 'PREDICTIVE_LEAD_TIME_HOURS',   label: 'LEAD TIME',       type: 'range', min:1,    max:24,   step:1,   unit:'h'     },
+      { key: 'PREDICTIVE_MIN_HISTORY_HOURS', label: 'MIN HISTORY',     type: 'range', min:24,   max:720,  step:24,  unit:'h'     },
+      { key: 'PREDICTIVE_LOOKBACK_DAYS',     label: 'LOOKBACK',        type: 'range', min:7,    max:365,  step:7,   unit:'days'  },
+      { key: 'PREDICTIVE_MAX_WORKERS',          label: 'MAX WORKERS',      type: 'range', min:1,  max:16,  step:1,  unit:''    },
+      { key: 'PREDICTIVE_INTERVAL_SECONDS',     label: 'RUN INTERVAL',     type: 'range', min:3600, max:86400, step:3600, unit:'s' },
+      { key: 'PREDICTIVE_RESERVATION_MINUTES',  label: 'NODE RESERVE',     type: 'range', min:0,  max:120, step:5,  unit:'min' },
+    ]
+  },
+  {
+    id: 'collector', label: 'Collector', color: 'var(--accent-cyan)',
+    controls: [
+      { key: 'POLL_INTERVAL',       label: 'FAST POLL',    type: 'range', min:10, max:120, step:5,  unit:'s' },
+      { key: 'SLOW_POLL_INTERVAL',  label: 'SLOW POLL',    type: 'range', min:60, max:3600,step:30, unit:'s' },
+      { key: 'INFLUX_WRITE_RETRIES',label: 'WRITE RETRIES',type: 'range', min:1,  max:10,  step:1,  unit:''  },
+      { key: 'INFLUX_RETRY_DELAY',  label: 'RETRY DELAY',  type: 'range', min:1,  max:30,  step:1,  unit:'s' },
+    ]
+  },
+  {
+    id: 'dashboard', label: 'Dashboard', color: 'var(--accent-green)',
+    controls: [
+      { key: 'STALE_SECONDS', label: 'STALE THRESHOLD', type: 'range', min:30, max:600, step:10, unit:'s' },
+    ]
+  },
+];
+
+// Reverse map: key → groupId
+const KEY_GROUP = {};
+CTRL_GROUPS.forEach(g => g.controls.forEach(c => { KEY_GROUP[c.key] = g.id; }));
+
+// Staged edits per group — not written to DB until Apply is clicked
+const _staged = {};
+
+function _updateFill(slider) {
+  const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+  slider.style.background =
+    `linear-gradient(to right, var(--accent-blue) ${pct}%, var(--bg-card) ${pct}%)`;
+}
+
+function _markDirty(groupId) {
+  const badge = document.getElementById(`dirty-${groupId}`);
+  const btn   = document.getElementById(`apply-${groupId}`);
+  if (badge) badge.style.display = 'inline';
+  if (btn)   btn.classList.add('dirty');
+}
+
+function _clearDirty(groupId) {
+  const badge = document.getElementById(`dirty-${groupId}`);
+  const btn   = document.getElementById(`apply-${groupId}`);
+  if (badge) badge.style.display = 'none';
+  if (btn)   btn.classList.remove('dirty');
+  delete _staged[groupId];
+}
+
+function onRangeInput(key, sliderEl) {
+  const val = sliderEl.value;
+  const vi  = document.getElementById(`vi_${key}`);
+  if (vi) vi.value = val;
+  _updateFill(sliderEl);
+  const gid = KEY_GROUP[key];
+  if (!_staged[gid]) _staged[gid] = {};
+  _staged[gid][key] = parseFloat(val);
+  _markDirty(gid);
+}
+
+function onValueInput(key, inputEl) {
+  const sl  = document.getElementById(`sl_${key}`);
+  const val = inputEl.value;
+  if (sl) { sl.value = val; _updateFill(sl); }
+  const gid = KEY_GROUP[key];
+  if (!_staged[gid]) _staged[gid] = {};
+  _staged[gid][key] = parseFloat(val);
+  _markDirty(gid);
+}
+
+function onToggle(key, cbEl) {
+  const gid = KEY_GROUP[key];
+  if (!_staged[gid]) _staged[gid] = {};
+  _staged[gid][key] = cbEl.checked;
+  const lbl = document.getElementById(`tgl-lbl-${key}`);
+  if (lbl) { lbl.textContent = cbEl.checked ? 'ON' : 'OFF'; lbl.style.color = cbEl.checked ? 'var(--accent-blue)' : 'var(--text-secondary)'; }
+  _markDirty(gid);
+}
+
+function onSegClick(key, val) {
+  document.querySelectorAll(`#seg_${key} .seg-btn`).forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.val) === val);
+  });
+  const gid = KEY_GROUP[key];
+  if (!_staged[gid]) _staged[gid] = {};
+  _staged[gid][key] = val;
+  _markDirty(gid);
+}
+
+function onTextInput(key, inputEl) {
+  const gid = KEY_GROUP[key];
+  if (!_staged[gid]) _staged[gid] = {};
+  _staged[gid][key] = inputEl.value;
+  _markDirty(gid);
+}
+
+async function applyGroup(groupId) {
+  const updates = _staged[groupId];
+  if (!updates || !Object.keys(updates).length) return;
+  try {
+    const r = await fetch(`${API_BASE}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _clearDirty(groupId);
+    showToast(`Applied ${Object.keys(updates).length} change(s)`, 'ok');
+  } catch(e) {
+    showToast(`Save failed: ${e.message}`, 'err');
+  }
+}
+
+function showToast(msg, type='ok') {
+  const t = document.getElementById('settingsToast');
+  t.textContent = msg;
+  t.className = `settings-toast ${type} show`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = 'settings-toast'; }, 2800);
+}
+
+function _infoBtn(key) {
+  return CTRL_INFO[key]
+    ? `<button class="info-btn" onclick="toggleInfo(event,'${key}')" title="More info">ⓘ</button>`
+    : '';
+}
+
+function _renderControl(def, value) {
+  const labelRow = `<div class="ctrl-label-row"><div class="ctrl-label">${def.label}</div>${_infoBtn(def.key)}</div>`;
+
+  if (def.type === 'bool') {
+    const checked = value ? 'checked' : '';
+    const stateLabel = value ? 'ON' : 'OFF';
+    const stateColor = value ? 'var(--accent-blue)' : 'var(--text-secondary)';
+    return `
+      <div class="ctrl-strip ctrl-strip-bool">
+        ${labelRow}
+        <div class="toggle-wrap">
+          <label class="toggle-switch">
+            <input type="checkbox" id="ctrl_${def.key}" ${checked}
+                   onchange="onToggle('${def.key}', this)">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+          <div class="toggle-state-label" id="tgl-lbl-${def.key}"
+               style="color:${stateColor}">${stateLabel}</div>
+        </div>
+      </div>`;
+  }
+
+  if (def.type === 'range') {
+    const pct = (value - def.min) / (def.max - def.min) * 100;
+    const bg  = `linear-gradient(to right, var(--accent-blue) ${pct}%, var(--bg-card) ${pct}%)`;
+    return `
+      <div class="ctrl-strip">
+        ${labelRow}
+        <input type="range" class="ctrl-range" id="sl_${def.key}"
+               min="${def.min}" max="${def.max}" step="${def.step}" value="${value}"
+               style="background:${bg}"
+               oninput="onRangeInput('${def.key}', this)">
+        <input type="number" class="ctrl-value-input" id="vi_${def.key}"
+               min="${def.min}" max="${def.max}" step="${def.step}" value="${value}"
+               oninput="onValueInput('${def.key}', this)">
+        ${def.unit ? `<div class="ctrl-unit">${def.unit}</div>` : ''}
+      </div>`;
+  }
+
+  if (def.type === 'seg') {
+    const btns = def.options.map(v =>
+      `<button class="seg-btn ${v == value ? 'active' : ''}" data-val="${v}"
+               onclick="onSegClick('${def.key}', ${v})">${v}</button>`
+    ).join('');
+    return `
+      <div class="ctrl-strip ctrl-strip-bool">
+        ${labelRow}
+        <div class="seg-ctrl" id="seg_${def.key}">${btns}</div>
+      </div>`;
+  }
+
+  if (def.type === 'text') {
+    const safeVal = (value || '').toString().replace(/"/g, '&quot;');
+    return `
+      <div class="ctrl-strip ${def.wide ? 'ctrl-strip-wide' : ''}">
+        ${labelRow}
+        <input type="text" class="ctrl-text-input" id="vi_${def.key}"
+               value="${safeVal}" placeholder="${def.hint || ''}"
+               oninput="onTextInput('${def.key}', this)">
+      </div>`;
+  }
+  return '';
+}
+
+// ─── Info popup logic ────────────────────────────────────────────
+let _infoActiveKey = null;
+
+function toggleInfo(evt, key) {
+  evt.stopPropagation();
+  const popup = document.getElementById('infoPopup');
+  if (_infoActiveKey === key) {
+    popup.classList.remove('visible');
+    _infoActiveKey = null;
+    return;
+  }
+  const info = CTRL_INFO[key];
+  if (!info) return;
+  // Find the label for this key across all groups
+  let label = key;
+  for (const g of CTRL_GROUPS) {
+    const c = g.controls.find(x => x.key === key);
+    if (c) { label = c.label; break; }
+  }
+  document.getElementById('infoPopupTitle').textContent   = label;
+  document.getElementById('infoPopupWhat').textContent     = info.what;
+  document.getElementById('infoPopupBenefits').textContent = info.benefits;
+  document.getElementById('infoPopupCareful').textContent  = info.careful;
+
+  // Position near the clicked button, keeping popup on-screen
+  const btn  = evt.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const pw   = 310;
+  const ph   = popup.offsetHeight || 220;
+  let left   = rect.left + window.scrollX;
+  let top    = rect.bottom + window.scrollY + 8;
+  if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+  if (top + ph > window.innerHeight + window.scrollY - 12)
+    top = rect.top + window.scrollY - ph - 8;
+  popup.style.left = left + 'px';
+  popup.style.top  = top  + 'px';
+  popup.classList.add('visible');
+  _infoActiveKey = key;
+}
+
+document.addEventListener('click', function(e) {
+  if (_infoActiveKey && !e.target.closest('#infoPopup') && !e.target.closest('.info-btn')) {
+    document.getElementById('infoPopup').classList.remove('visible');
+    _infoActiveKey = null;
+  }
+});
+
+async function loadSettings() {
+  const data = await apiFetch('/api/config');
+  if (!data) { document.getElementById('settingsContent').innerHTML = '<div class="empty-state">Could not load settings.</div>'; return; }
+
+  // Build lookup map from API response
+  const vals = {};
+  data.forEach(item => { vals[item.key] = item.value; });
+
+  document.getElementById('settingsContent').innerHTML = CTRL_GROUPS.map(group => {
+    const controls = group.controls.map(def => _renderControl(def, vals[def.key] ?? '')).join('');
+    return `
+      <div class="settings-group">
+        <div class="settings-group-header">
+          <div class="chart-title-dot" style="background:${group.color}"></div>
+          <span class="settings-group-title">${group.label}</span>
+          <span class="dirty-badge" id="dirty-${group.id}" style="display:none">● unsaved</span>
+          <button class="apply-btn" id="apply-${group.id}" onclick="applyGroup('${group.id}')">Apply</button>
+        </div>
+        <div class="ctrl-rack">${controls}</div>
+      </div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

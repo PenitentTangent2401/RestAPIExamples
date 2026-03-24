@@ -1,0 +1,6 @@
+requests
+python-dotenv
+pandas
+prophet
+influxdb-client
+urllib3
