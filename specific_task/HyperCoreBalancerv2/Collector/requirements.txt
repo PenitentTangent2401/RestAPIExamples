@@ -1,0 +1,3 @@
+requests
+influxdb-client
+urllib3

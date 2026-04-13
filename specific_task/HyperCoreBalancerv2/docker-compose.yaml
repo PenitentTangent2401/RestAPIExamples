@@ -1,0 +1,192 @@
+version: '3.8'
+
+# =============================================================================
+# RESOURCE LIMITS — READ BEFORE CHANGING
+# =============================================================================
+# Each service has a 'deploy.resources.limits' block defining its maximum CPU
+# and memory allocation. These are hard limits enforced by the kernel via
+# cgroups — a container cannot exceed them regardless of host availability.
+#
+# IMPORTANT: The sum of all CPU limits must not exceed the number of physical
+# CPU cores available to Docker on the host. Exceeding this causes containers
+# to compete for the same cores, increasing latency across the entire stack.
+#
+# Tuned for a 2-CPU host. Total limits: 2.75 CPU / 2.1 GB RAM
+#   influxdb:  0.75 CPU   768MB
+#   balancer:  1.50 CPU  1024MB  <- dominant consumer during predictive runs
+#   collector: 0.25 CPU   128MB
+#   dashboard: 0.25 CPU   256MB
+#   grafana:   0.25 CPU   128MB  (optional, tools profile only)
+#
+# Total limits intentionally exceed 2.0 cores because the Oracle (balancer spike)
+# and InfluxDB/dashboard/collector never hit their ceilings simultaneously.
+# Outside Oracle runs the entire stack uses well under 0.5 cores combined.
+#
+# The balancer's CPU limit should match or exceed SC_PREDICTIVE_MAX_WORKERS
+# in your .env file. If you reduce the CPU limit below the worker count,
+# Prophet workers will compete for cores and predictive runs will take longer.
+# =============================================================================
+
+services:
+  influxdb:
+    build: ./influxdb
+    container_name: sc_influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${DOCKER_INFLUXDB_INIT_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${DOCKER_INFLUXDB_INIT_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_LONGTERM_BUCKET=${INFLUX_LONGTERM_BUCKET}
+      - INFLUX_PRIMARY_RETENTION=${INFLUX_PRIMARY_RETENTION}
+      - INFLUX_LONGTERM_RETENTION=${INFLUX_LONGTERM_RETENTION}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sc_grafana
+    profiles:
+      - tools
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    volumes:
+      - grafana-data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    restart: unless-stopped
+
+  collector:
+    build: ./Collector
+    container_name: sc_collector
+    volumes:
+      - sc-config:/config
+    environment:
+      # HyperCore Credentials
+      - SC_HOST=${SC_HOST}
+      - SC_USERNAME=${SC_USERNAME}
+      - SC_PASSWORD=${SC_PASSWORD}
+      - SC_VERIFY_SSL=${SC_VERIFY_SSL}
+      # InfluxDB Connection
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - SC_POLL_INTERVAL=${SC_POLL_INTERVAL}
+      - SC_SLOW_POLL_INTERVAL=${SC_SLOW_POLL_INTERVAL}
+      - INFLUX_PRIMARY_RETENTION=${INFLUX_PRIMARY_RETENTION}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    restart: unless-stopped
+
+  balancer:
+    build: ./Balancer
+    container_name: sc_balancer
+    volumes:
+      - sc-config:/config
+    environment:
+      # HyperCore Credentials
+      - SC_HOST=${SC_HOST}
+      - SC_USERNAME=${SC_USERNAME}
+      - SC_PASSWORD=${SC_PASSWORD}
+      - SC_VERIFY_SSL=${SC_VERIFY_SSL}
+
+      # Master Toggles
+      - SC_DRY_RUN=${SC_DRY_RUN}
+      - SC_VERBOSITY=${SC_VERBOSITY}
+
+      # --- REACTIVE ENGINE TUNING ---
+      - SC_AVG_WINDOW_MINUTES=${SC_AVG_WINDOW_MINUTES}
+      - SC_SAMPLE_INTERVAL_SECONDS=${SC_SAMPLE_INTERVAL_SECONDS}
+      - SC_RAM_LIMIT_PERCENT=${SC_RAM_LIMIT_PERCENT}
+      - SC_RAM_UPPER_THRESHOLD_PERCENT=${SC_RAM_UPPER_THRESHOLD_PERCENT}
+      - SC_CPU_UPPER_THRESHOLD_PERCENT=${SC_CPU_UPPER_THRESHOLD_PERCENT}
+      - SC_MAX_VCPU_RATIO=${SC_MAX_VCPU_RATIO}
+      - SC_VM_MOVE_COOLDOWN_MINUTES=${SC_VM_MOVE_COOLDOWN_MINUTES}
+      - SC_MIGRATION_COOLDOWN_MINUTES=${SC_MIGRATION_COOLDOWN_MINUTES}
+      - SC_EXCLUDE_NODE_IPS=${SC_EXCLUDE_NODE_IPS}
+
+      # --- PREDICTIVE ENGINE TUNING (The Oracle) ---
+      - SC_PREDICTIVE_BALANCING_ENABLED=${SC_PREDICTIVE_BALANCING_ENABLED}
+      - SC_PREDICTIVE_INTERVAL_SECONDS=${SC_PREDICTIVE_INTERVAL_SECONDS}
+      - SC_PREDICTIVE_THRESHOLD=${SC_PREDICTIVE_THRESHOLD}
+      - SC_PREDICTIVE_MIN_HISTORY_HOURS=${SC_PREDICTIVE_MIN_HISTORY_HOURS}
+      - SC_PREDICTIVE_LEAD_TIME_HOURS=${SC_PREDICTIVE_LEAD_TIME_HOURS}
+      - SC_PREDICTIVE_LOOKBACK_DAYS=${SC_PREDICTIVE_LOOKBACK_DAYS}
+      - SC_PREDICTIVE_MAX_WORKERS=${SC_PREDICTIVE_MAX_WORKERS}
+      - SC_PREDICTIVE_RESERVATION_MINUTES=${SC_PREDICTIVE_RESERVATION_MINUTES}
+
+      # Oracle InfluxDB Connection (Talks internally to the docker network)
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    container_name: sc_dashboard
+    ports:
+      - "5000:5000"
+    volumes:
+      - sc-config:/config
+    environment:
+      - INFLUX_URL=http://influxdb:8086
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - SC_DASHBOARD_STALE_SECONDS=${SC_DASHBOARD_STALE_SECONDS}
+      - SC_DASHBOARD_USER=${SC_DASHBOARD_USER}
+      - SC_DASHBOARD_PASSWORD=${SC_DASHBOARD_PASSWORD}
+      - SC_EXCLUDE_NODE_IPS=${SC_EXCLUDE_NODE_IPS}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  grafana-data:
+  sc-config:
