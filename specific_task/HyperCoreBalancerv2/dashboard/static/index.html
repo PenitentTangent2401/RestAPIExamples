@@ -680,6 +680,18 @@ function renderVsdsForVm(vmUuid) {
   `;
 }
 
+// ─── Calculate CPU Commit Ratio for Node ───
+function calculateCpuRatio(nodeUuid,nodeThreads) {
+  const vms = cachedVmData.filter( v => v.node_uuid === nodeUuid);
+  if (!vms.length) return '';
+  
+  const totalVcpus = vms.reduce(
+    (sum, vm) => sum + Number(vm.num_vcpu || 0),
+    0
+  );
+  return Number((totalVcpus / nodeThreads).toFixed(2));    
+}
+
 // ─── Load Nodes + Drives ───
 async function loadNodes() {
   const [nodeData, driveData] = await Promise.all([
@@ -712,6 +724,10 @@ async function loadNodes() {
         </div>
         <div class="progress-bar">
           <div class="progress-fill" style="width:${Math.min(cpu,100)}%;background:${progressColor(cpu)}"></div>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">CPU Commit Ratio</span>
+          <span class="metric-value">${calculateCpuRatio(node.uuid, node.threads)}</span>
         </div>
         <div class="metric-row">
           <span class="metric-label">Memory Used</span>
