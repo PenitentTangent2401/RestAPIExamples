@@ -595,7 +595,10 @@ async function apiFetch(ep) {
 
 // ─── Render drive sub-items for a given node ───
 function renderDrivesForNode(nodeUuid) {
-  const drives = cachedDrives.filter(d => d.node_uuid === nodeUuid);
+  const drives = cachedDrives
+    .filter(d => d.node_uuid === nodeUuid)
+    .slice()
+    .sort((a, b) => (parseInt(a.slot, 10) || 0) - (parseInt(b.slot,10) || 0));
   if (!drives.length) return '';
   
   return `
