@@ -777,6 +777,14 @@ function renderVmCard(vm) {
         <div class="progress-fill" style="width:${Math.min(cpu,100)}%;background:${progressColor(cpu)}"></div>
       </div>
       <div class="metric-row">
+        <span class="metric-label">vCPUs</span>
+        <span class="metric-value">${vm.vcpu}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Allocated RAM</span>
+        <span class="metric-value">${formatBytes(vm.memory||0)}</span>
+      </div>
+      <div class="metric-row">
         <span class="metric-label">Network RX</span>
         <span class="metric-value">${formatBytes(latest.rx_bit_rate||0)}/s</span>
       </div>

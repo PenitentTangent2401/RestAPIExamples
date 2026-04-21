@@ -138,11 +138,30 @@ def get_vms():
     client = get_influx_client()
     try:
         query = f'''
-        from(bucket: "{INFLUX_BUCKET}")
-          |> range(start: -{range_hours}h)
-          |> filter(fn: (r) => r["_measurement"] == "vm_metrics")
-          |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
-          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+        vmMetrics =
+          from(bucket: "metrics")
+            |> range(start: -{range_hours}h)
+            |> filter(fn: (r) => r._measurement == "vm_metrics")
+            |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+            |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+
+        vmInventory =
+          from(bucket: "metrics")
+            |> range(start: -{range_hours}h)
+            |> filter(fn: (r) =>
+                r._measurement == "vm_inventory" and
+                r._field == "num_vcpu" or
+                r._field == "mem_bytes"
+            )
+            |> last()
+            |> pivot(rowKey: ["vm_uuid"], columnKey: ["_field"], valueColumn: "_value")
+            |> keep(columns: ["vm_uuid", "num_vcpu", "mem_bytes"])
+
+        join(
+          tables: {{m: vmMetrics, i: vmInventory}},
+          on: ["vm_uuid"],
+          method: "inner"
+        )
         '''
         result = client.query_api().query(org=INFLUX_ORG, query=query)
         
@@ -161,6 +180,8 @@ def get_vms():
                         'node_peer_id': record.values.get('node_peer_id', 'unknown'),
                         'tag': record.values.get('vm_tag', ''),
                         'vlan': record.values.get('vm_vlan', '0'),
+                        'vcpus': record.values.get('num_vcpu', '0'),
+                        'memory': record.values.get('mem_bytes', '0'),
                         'history': []
                     }
                 
