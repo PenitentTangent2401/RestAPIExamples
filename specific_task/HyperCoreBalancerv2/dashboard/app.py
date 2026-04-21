@@ -105,11 +105,15 @@ def get_nodes():
             for record in table.records:
                 node_uuid = record.values.get('node_uuid', 'unknown')
                 peer_id = record.values.get('node_peer_id', 'unknown')
+                threads = record.values.get('num_threads', 'unknown')
+                memory = record.values.get('mem_size', 'unknown')
                 
                 if node_uuid not in nodes:
                     nodes[node_uuid] = {
                         'uuid': node_uuid,
                         'peer_id': peer_id,
+                        'threads': threads,
+                        'memory': memory,
                         'history': []
                     }
                 

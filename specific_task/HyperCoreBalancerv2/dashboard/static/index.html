@@ -698,6 +698,7 @@ async function loadNodes() {
     const latest = node.history[node.history.length - 1] || {};
     const cpu = latest.cpu_usage || 0;
     const memBytes = latest.mem_usage_bytes || 0;
+    const ram = (memBytes / node.memory) * 100 || 0;
     
     return `
       <div class="card">
@@ -714,7 +715,10 @@ async function loadNodes() {
         </div>
         <div class="metric-row">
           <span class="metric-label">Memory Used</span>
-          <span class="metric-value">${formatBytes(memBytes)}</span>
+          <span class="metric-value">${formatBytes(memBytes)} / <span style="color:${progressColor(ram)}">${ram.toFixed(1)}%</span></span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${Math.min(ram,100)}%;background:${progressColor(ram)}"></div>
         </div>
         <div class="metric-row">
           <span class="metric-label">Data Points (1h)</span>
