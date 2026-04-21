@@ -686,7 +686,7 @@ function calculateCpuRatio(nodeUuid,nodeThreads) {
   if (!vms.length) return '';
   
   const totalVcpus = vms.reduce(
-    (sum, vm) => sum + Number(vm.num_vcpu || 0),
+    (sum, vm) => sum + Number(vm.vcpus || 0),
     0
   );
   return Number((totalVcpus / nodeThreads).toFixed(2));    
